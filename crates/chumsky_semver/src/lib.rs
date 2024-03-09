@@ -1,6 +1,8 @@
+use chumsky::extra::ParserExtra;
+use chumsky::input::Input;
 use chumsky::prelude::{choice, just, one_of, Parser};
 
-pub fn lex_semver<'a>() -> impl Parser<'a, &'a str, &'a str> {
+pub fn lex_semver<'a, E: ParserExtra<'a, &'a str>>() -> impl Parser<'a, &'a str, &'a str, E> {
 
     let letter = one_of("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVW");
     let positive_digit = one_of("123456789");
@@ -52,55 +54,54 @@ pub fn lex_semver<'a>() -> impl Parser<'a, &'a str, &'a str> {
         .then(just("-").then(pre_release).or_not())
         .then(just("+").then(build).or_not())
         .to_slice()
-        .boxed()
 }
 
-pub fn parse_semver<'a>() -> impl Parser<'a, &'a str, semver::Version> {
+pub fn parse_semver<'a, E: ParserExtra<'a, &'a str>>() -> impl Parser<'a, &'a str, semver::Version, E> {
     lex_semver().map(|s| {
         semver::Version::parse(s)
             .expect("Implementation error: The semver parser should match the semver crate's parser exactly!")
     })
-    .boxed()
 }
 
 #[cfg(test)]
 mod tests {
+    use chumsky::extra;
     use super::*;
 
     #[test]
     fn test_valid() {
         assert_eq!(
-            parse_semver().parse("1.2.3").unwrap(),
+            parse_semver::<extra::Default>().parse("1.2.3").unwrap(),
             semver::Version::parse("1.2.3").unwrap()
         );
         assert_eq!(
-            parse_semver().parse("1.0.0-pre+build").unwrap(),
+            parse_semver::<extra::Default>().parse("1.0.0-pre+build").unwrap(),
             semver::Version::parse("1.0.0-pre+build").unwrap()
         );
         assert_eq!(
-            parse_semver().parse("1.0.0-pre").unwrap(),
+            parse_semver::<extra::Default>().parse("1.0.0-pre").unwrap(),
             semver::Version::parse("1.0.0-pre").unwrap()
         );
         assert_eq!(
-            parse_semver().parse("1.0.0+build").unwrap(),
+            parse_semver::<extra::Default>().parse("1.0.0+build").unwrap(),
             semver::Version::parse("1.0.0+build").unwrap()
         );
         // A bit stupid, but it does match the spec.
         // The part after the - is not a pre, but simply part of the build.
         assert_eq!(
-            parse_semver().parse("1.0.0+build-notpre").unwrap(),
+            parse_semver::<extra::Default>().parse("1.0.0+build-notpre").unwrap(),
             semver::Version::parse("1.0.0+build-notpre").unwrap()
         );
     }
 
     #[test]
     fn test_invalid() {
-        assert!(parse_semver().parse("").has_errors());
-        assert!(parse_semver().parse("1.2").has_errors());
-        assert!(parse_semver().parse("1").has_errors());
-        assert!(parse_semver().parse("1.2.").has_errors());
-        assert!(parse_semver().parse("1.2.3.").has_errors());
-        assert!(parse_semver().parse("+a").has_errors());
-        assert!(parse_semver().parse("-a").has_errors());
+        assert!(parse_semver::<extra::Default>().parse("").has_errors());
+        assert!(parse_semver::<extra::Default>().parse("1.2").has_errors());
+        assert!(parse_semver::<extra::Default>().parse("1").has_errors());
+        assert!(parse_semver::<extra::Default>().parse("1.2.").has_errors());
+        assert!(parse_semver::<extra::Default>().parse("1.2.3.").has_errors());
+        assert!(parse_semver::<extra::Default>().parse("+a").has_errors());
+        assert!(parse_semver::<extra::Default>().parse("-a").has_errors());
     }
 }
