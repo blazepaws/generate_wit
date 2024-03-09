@@ -4,6 +4,9 @@ use chumsky::prelude::{choice, just, one_of, Parser};
 
 pub fn lex_semver<'a, E: ParserExtra<'a, &'a str>>() -> impl Parser<'a, &'a str, &'a str, E> {
 
+    // These clauses are almost 1:1 copies of the semver grammar rules found on
+    // https://semver.org/#semantic-versioning-200
+
     let letter = one_of("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVW");
     let positive_digit = one_of("123456789");
     let digit = choice((
