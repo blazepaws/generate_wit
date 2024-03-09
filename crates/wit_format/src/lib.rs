@@ -1,2 +1,3 @@
-//mod lexer;
-// mod spec;
+mod lexer;
+mod spec;
+mod parser;
