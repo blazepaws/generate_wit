@@ -1,6 +1,6 @@
 use chumsky::prelude::{choice, just, one_of, Parser};
 
-pub fn parse_semver<'a>() -> impl Parser<'a, &'a str, semver::Version> {
+pub fn lex_semver<'a>() -> impl Parser<'a, &'a str, &'a str> {
 
     let letter = one_of("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVW");
     let positive_digit = one_of("123456789");
@@ -52,11 +52,15 @@ pub fn parse_semver<'a>() -> impl Parser<'a, &'a str, semver::Version> {
         .then(just("-").then(pre_release).or_not())
         .then(just("+").then(build).or_not())
         .to_slice()
-        .map(|s| {
-            semver::Version::parse(s)
-                .expect("Implementation error: The semver parser should match the semver crate's parser exactly!")
-        })
         .boxed()
+}
+
+pub fn parse_semver<'a>() -> impl Parser<'a, &'a str, semver::Version> {
+    lex_semver().map(|s| {
+        semver::Version::parse(s)
+            .expect("Implementation error: The semver parser should match the semver crate's parser exactly!")
+    })
+    .boxed()
 }
 
 #[cfg(test)]
