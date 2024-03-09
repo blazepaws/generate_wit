@@ -8,6 +8,7 @@ use std::fmt::Formatter;
 use chumsky::{extra, IterParser, Parser, ParseResult};
 use chumsky::input::Input;
 use chumsky::prelude::{any, choice, just, none_of, one_of, recursive, Rich};
+use chumsky::span::SimpleSpan;
 use serde::{Deserialize, Serialize};
 
 #[derive(Eq, PartialEq, Copy, Clone, Serialize, Deserialize)]
@@ -328,7 +329,7 @@ fn identifier<'a>() -> impl Parser<'a, &'a str, Token<'a>, extra::Err<Rich<'a, c
 }
 
 /// Lex a single wit token
-pub fn lex_token<'a>() -> impl Parser<'a, &'a str, Token<'a>, extra::Err<Rich<'a, char>>> {
+pub fn lex_token<'a>() -> impl Parser<'a, &'a str, (Token<'a>, SimpleSpan), extra::Err<Rich<'a, char>>> {
     choice((
         whitespace(),
         comment(),
@@ -336,16 +337,18 @@ pub fn lex_token<'a>() -> impl Parser<'a, &'a str, Token<'a>, extra::Err<Rich<'a
         keyword(),
         integer(),
         identifier(),
-    ))
+    )).map_with(|token, extra| {
+        (token, extra.span())
+    })
 }
 
 /// Lex a full wit file
-pub fn lex_wit<'a>() -> impl Parser<'a, &'a str, Vec<Token<'a>>, extra::Err<Rich<'a, char>>> {
+pub fn lex_wit<'a>() -> impl Parser<'a, &'a str, Vec<(Token<'a>, SimpleSpan)>, extra::Err<Rich<'a, char>>> {
     lex_token().repeated().collect()
 }
 
 /// Lex a string into a list of tokens
-pub fn lex<'a>(s: &'a str) -> ParseResult<Vec<Token<'a>>, Rich<'a, char>> {
+pub fn lex<'a>(s: &'a str) -> ParseResult<Vec<(Token<'a>, SimpleSpan)>, Rich<'a, char>> {
     lex_wit().parse(s)
 }
 
@@ -385,27 +388,27 @@ mod test {
     fn test_comment() {
         assert_eq!(
             lex_token().parse("// aaa").unwrap(),
-            Token::Comment("// aaa")
+            (Token::Comment("// aaa"), SimpleSpan::new(0, 6))
         );
         assert_eq!(
             lex_token().parse("//aaa").unwrap(),
-            Token::Comment("//aaa")
+            (Token::Comment("//aaa"), SimpleSpan::new(0, 5))
         );
         assert_eq!(
             lex_token().parse("/*aaa*/").unwrap(),
-            Token::Comment("/*aaa*/")
+            (Token::Comment("/*aaa*/"), SimpleSpan::new(0, 7))
         );
         assert_eq!(
             lex_token().parse("/**/").unwrap(),
-            Token::Comment("/**/")
+            (Token::Comment("/**/"), SimpleSpan::new(0, 4))
         );
         assert_eq!(
             lex_token().parse("/*/**/*/").unwrap(),
-            Token::Comment("/*/**/*/")
+            (Token::Comment("/*/**/*/"), SimpleSpan::new(0, 8))
         );
         assert_eq!(
             lex_token().parse("/*a/*a*/a*/").unwrap(),
-            Token::Comment("/*a/*a*/a*/")
+            (Token::Comment("/*a/*a*/a*/"), SimpleSpan::new(0, 11))
         );
     }
 
@@ -413,27 +416,28 @@ mod test {
     fn test_operator() {
         assert_eq!(
             lex_token().parse(":").unwrap(),
-            Token::Operator(Operator::Colon)
+            (Token::Operator(Operator::Colon), SimpleSpan::new(0, 1))
         );
     }
 
     #[test]
     fn bug_01() {
+        // Reproduces a bug where the order of precedence messed up parsing.
         let wit = "package documentation:http@1.0.0;";
         let tokens = lex(wit).unwrap();
         assert_eq!(tokens, vec![
-            Token::Keyword(Keyword::Package),
-            Token::Whitespace(" "),
-            Token::Identifier("documentation"),
-            Token::Operator(Operator::Colon),
-            Token::Identifier("http"),
-            Token::Operator(Operator::At),
-            Token::Integer(1),
-            Token::Operator(Operator::Dot),
-            Token::Integer(0),
-            Token::Operator(Operator::Dot),
-            Token::Integer(0),
-            Token::Operator(Operator::Semicolon)
+            (Token::Keyword(Keyword::Package), SimpleSpan::new(0, 7)),
+            (Token::Whitespace(" "), SimpleSpan::new(7, 8)),
+            (Token::Identifier("documentation"), SimpleSpan::new(8, 21)),
+            (Token::Operator(Operator::Colon), SimpleSpan::new(21, 22)),
+            (Token::Identifier("http"), SimpleSpan::new(22, 26)),
+            (Token::Operator(Operator::At), SimpleSpan::new(26, 27)),
+            (Token::Integer(1), SimpleSpan::new(27, 28)),
+            (Token::Operator(Operator::Dot), SimpleSpan::new(28, 29)),
+            (Token::Integer(0), SimpleSpan::new(29, 30)),
+            (Token::Operator(Operator::Dot), SimpleSpan::new(30, 31)),
+            (Token::Integer(0), SimpleSpan::new(31, 32)),
+            (Token::Operator(Operator::Semicolon), SimpleSpan::new(32, 33))
         ]);
     }
 
@@ -449,7 +453,7 @@ mod test {
         ";
         let tokens = lex(wit).unwrap();
         let mut reencoded = String::new();
-        for token in tokens {
+        for (token, _span) in tokens {
             reencoded += token.to_string().as_str();
         }
         assert_eq!(wit, reencoded.as_str());
